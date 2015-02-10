@@ -3,7 +3,9 @@ package co.mobilemakers.githubrepos;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
+import android.support.v4.app.ListFragment;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -37,28 +39,37 @@ import javax.net.ssl.HttpsURLConnection;
 /**
  * A placeholder fragment containing a simple view.
  */
-public class GithubReposFragment extends Fragment {
+public class GithubReposFragment extends ListFragment {
 
     private final static String LOG_TAG = GithubReposFragment.class.getSimpleName();
-
+    GithubRepoAdapter mAdapter;
     EditText mEditTextUsername;
-    TextView mTextViewRepos;
     Button buttonGetRepos;
 
     public GithubReposFragment() {
     }
 
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container,
-                             Bundle savedInstanceState) {
+    public View onCreateView(LayoutInflater inflater, ViewGroup container,Bundle savedInstanceState) {
         final View rootView = inflater.inflate(R.layout.fragment_github_repos, container, false);
         wireUpViews(rootView);
         prepareButton(rootView);
         return rootView;
     }
 
+    @Override
+    public void onActivityCreated(@Nullable Bundle savedInstanceState) {
+        super.onActivityCreated(savedInstanceState);
+        prepareListView();
+    }
+
+    private void prepareListView() {
+        List<GithubRepo> repos = new ArrayList<>();
+        mAdapter = new GithubRepoAdapter(getActivity(), repos);
+        setListAdapter(mAdapter);
+    }
+
     private void wireUpViews(View rootView) {
-        mTextViewRepos = (TextView)rootView.findViewById(R.id.text_view_repos);
         mEditTextUsername = (EditText)rootView.findViewById(R.id.edit_text_username);
     }
 
@@ -89,11 +100,13 @@ public class GithubReposFragment extends Fragment {
                 @Override
                 public void onResponse(Response response) throws IOException {
                     String responseString = response.body().string();
-                    final String listOfRepos = parseResponse(responseString);
+                    final List<GithubRepo> listOfRepos = parseResponse(responseString);
                     getActivity().runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            mTextViewRepos.setText(listOfRepos);
+                            mAdapter.clear();
+                            mAdapter.addAll(listOfRepos);
+                            mAdapter.notifyDataSetChanged();
                         }
                     });
                 }
@@ -105,20 +118,27 @@ public class GithubReposFragment extends Fragment {
 
     }
 
-    private String parseResponse(String response){
+    private List<GithubRepo> parseResponse(String response){
         final String REPO_NAME = "name";
-        List<String> repos = new ArrayList<>();
+        final String REPO_DESC = "description";
+        final String REPO_URL  = "html_url";
+        List<GithubRepo> repos = new ArrayList<>();
+        GithubRepo repo;
         try {
             JSONArray responseJsonArray = new JSONArray(response);
             JSONObject object;
             for(int i=0;i<responseJsonArray.length();i++){
                 object = responseJsonArray.getJSONObject(i);
-                repos.add(object.getString(REPO_NAME));
+                repo = new GithubRepo();
+                repo.setName(object.getString(REPO_NAME));
+                repo.setDescription(object.getString(REPO_DESC));
+                repo.setUrl(object.getString(REPO_URL));
+                repos.add(repo);
             }
         } catch (JSONException e) {
             e.printStackTrace();
         }
-        return TextUtils.join(", ",repos);
+        return repos;
     }
 
     private URL ConstructURLQuery(String username) throws MalformedURLException {

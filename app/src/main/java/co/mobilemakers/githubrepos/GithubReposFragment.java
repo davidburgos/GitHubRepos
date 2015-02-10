@@ -14,6 +14,11 @@ import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.squareup.okhttp.Callback;
+import com.squareup.okhttp.OkHttpClient;
+import com.squareup.okhttp.Request;
+import com.squareup.okhttp.Response;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -38,6 +43,7 @@ public class GithubReposFragment extends Fragment {
 
     EditText mEditTextUsername;
     TextView mTextViewRepos;
+    Button buttonGetRepos;
 
     public GithubReposFragment() {
     }
@@ -46,33 +52,57 @@ public class GithubReposFragment extends Fragment {
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
         final View rootView = inflater.inflate(R.layout.fragment_github_repos, container, false);
-        Button buttonGetRepos = (Button) rootView.findViewById(R.id.button_get_repos);
+        wireUpViews(rootView);
+        prepareButton(rootView);
+        return rootView;
+    }
+
+    private void wireUpViews(View rootView) {
         mTextViewRepos = (TextView)rootView.findViewById(R.id.text_view_repos);
         mEditTextUsername = (EditText)rootView.findViewById(R.id.edit_text_username);
+    }
+
+    private void prepareButton(View rootView) {
+        buttonGetRepos = (Button) rootView.findViewById(R.id.button_get_repos);
         buttonGetRepos.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 String username = mEditTextUsername.getText().toString();
                 String message = String.format(getString(R.string.getting_repos_for_user),username);
                 Toast.makeText(getActivity(), message, Toast.LENGTH_LONG).show();
-                new FetchReposTask().execute(username);
+                fetchReposInQueue(username);
             }
         });
-        return rootView;
     }
 
-    private String readFullResponse(InputStream inputStream) throws IOException {
-        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
-        StringBuilder stringBuilder = new StringBuilder();
-        String response ="";
-        String line;
-        while((line = bufferedReader.readLine()) != null){
-            stringBuilder.append(line).append("\n");
+    private void fetchReposInQueue(String username){
+        try {
+            URL url = ConstructURLQuery(username);
+            Request request = new Request.Builder().url(url.toString()).build();
+            OkHttpClient client = new OkHttpClient();
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Request request, IOException e) {
+                    e.printStackTrace();
+                }
+
+                @Override
+                public void onResponse(Response response) throws IOException {
+                    String responseString = response.body().string();
+                    final String listOfRepos = parseResponse(responseString);
+                    getActivity().runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            mTextViewRepos.setText(listOfRepos);
+                        }
+                    });
+                }
+            });
+
+        } catch (IOException e) {
+            e.printStackTrace();
         }
-        if(stringBuilder.length() > 0){
-            response = stringBuilder.toString();
-        }
-        return response;
+
     }
 
     private String parseResponse(String response){
@@ -89,45 +119,6 @@ public class GithubReposFragment extends Fragment {
             e.printStackTrace();
         }
         return TextUtils.join(", ",repos);
-    }
-
-    class FetchReposTask extends AsyncTask<String, Void, String>{
-
-        String username="";
-        String listOfRepos ="";
-
-        @Override
-        protected void onPostExecute(String response) {
-            super.onPostExecute(response);
-
-            mTextViewRepos.setText(response);
-        }
-
-        @Override
-        protected String doInBackground(String... params) {
-            String username;
-            if(params.length > 0){
-                username = params[0];
-            }else{
-                username="octocat";
-            }
-
-            try {
-                URL url = ConstructURLQuery(username);
-                HttpsURLConnection httpsURLConnection = (HttpsURLConnection) url.openConnection();
-                try {
-                     String response = readFullResponse(httpsURLConnection.getInputStream());
-                    listOfRepos = parseResponse(response);
-                } catch(IOException e){
-                    e.printStackTrace();
-                }finally{
-                    httpsURLConnection.disconnect();
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            return listOfRepos;
-        }
     }
 
     private URL ConstructURLQuery(String username) throws MalformedURLException {
